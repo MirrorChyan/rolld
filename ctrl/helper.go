@@ -266,6 +266,7 @@ func (i *Instance) Rollback(srv string) {
 			if err := i.changeUpstream(service, port); err != nil {
 				log.Fatal(err)
 			}
+			return
 		}
 	}
 	fmt.Println("srv", srv, "not found")
