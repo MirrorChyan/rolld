@@ -45,7 +45,7 @@ func Init() *Instance {
 
 	cli, err := client.NewClientWithOpts(client.WithHost(api))
 	if err != nil {
-		log.Println(err)
+		log.Fatal(err)
 		return nil
 	}
 	instance.c = cli
@@ -95,17 +95,19 @@ func (i *Instance) LoadContainerInfo() (map[string]*ContainerTuple, error) {
 
 func checkHealth(srv internal.Server, port string) bool {
 	fmt.Println("Check Health ...")
-	return true
 	ticker := time.NewTicker(time.Second * 3)
 	defer ticker.Stop()
-	timer := time.NewTimer(time.Second * 60)
+	timer := time.NewTimer(time.Second * 40)
 	defer timer.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%s/%s", port, srv.HealthCheck))
 			if err == nil && resp.StatusCode == http.StatusOK {
+				fmt.Println("Health Check Success")
 				return true
+			} else {
+				log.Println("Health Check Failed")
 			}
 		case <-timer.C:
 			return false
@@ -210,11 +212,11 @@ func (i *Instance) Prune(srv string) {
 			tuple, ok := info[compose.Config.Image]
 
 			if !ok || len(tuple.Containers) < 2 {
-				log.Println("Srv ", service.Srv, "only has one container, skip prune")
+				fmt.Println("Srv ", service.Srv, "only has one container, skip prune")
 				continue
 			}
 			for _, ctr := range tuple.Containers[1:] {
-				log.Println("Prune Containers")
+				fmt.Println("Prune Containers")
 				err = i.c.ContainerRemove(ctx, ctr.ID, container.RemoveOptions{
 					Force: true,
 				})
@@ -245,12 +247,12 @@ func (i *Instance) Rollback(srv string) {
 			tuple, ok := info[compose.Config.Image]
 
 			if !ok || len(tuple.Containers) < 2 {
-				log.Println("Srv ", srv, "only has one container, can't rollback")
+				fmt.Println("Srv ", srv, "only has one container, can't rollback")
 				return
 			}
 			bindings := tuple.Containers[1].HostConfig.PortBindings
 			if len(bindings) != 1 {
-				log.Println("Srv ", srv, "has multi port bindings, can't rollback")
+				fmt.Println("Srv ", srv, "has multi port bindings, can't rollback")
 				return
 			}
 			var port string
@@ -266,6 +268,11 @@ func (i *Instance) Rollback(srv string) {
 			if err := i.changeUpstream(service, port); err != nil {
 				log.Fatal(err)
 			}
+			_ = i.c.ContainerRemove(ctx, tuple.Containers[0].ID, container.RemoveOptions{
+				Force: true,
+			})
+			fmt.Println("Clear Container")
+
 			return
 		}
 	}
