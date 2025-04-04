@@ -102,7 +102,7 @@ func checkHealth(srv internal.Server, port string) bool {
 	for {
 		select {
 		case <-ticker.C:
-			resp, err := http.Get(fmt.Sprintf("http://localhost:%s/%s", port, srv.HealthCheck))
+			resp, err := http.Get(fmt.Sprintf("http://localhost:%s%s", port, srv.HealthCheck))
 			if err == nil && resp.StatusCode == http.StatusOK {
 				fmt.Println("Health Check Success")
 				return true
