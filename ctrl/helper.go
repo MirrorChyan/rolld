@@ -94,7 +94,8 @@ func (i *Instance) LoadContainerInfo() (map[string]*ContainerTuple, error) {
 }
 
 func checkHealth(srv internal.Server, port string) bool {
-	fmt.Println("Check Health ...")
+	url := fmt.Sprintf("http://localhost:%s%s", port, srv.HealthCheck)
+	fmt.Println("Check Health ...", url)
 	ticker := time.NewTicker(time.Second * 3)
 	defer ticker.Stop()
 	timer := time.NewTimer(time.Second * 40)
@@ -102,7 +103,8 @@ func checkHealth(srv internal.Server, port string) bool {
 	for {
 		select {
 		case <-ticker.C:
-			resp, err := http.Get(fmt.Sprintf("http://localhost:%s%s", port, srv.HealthCheck))
+
+			resp, err := http.Get(url)
 			if err == nil && resp.StatusCode == http.StatusOK {
 				fmt.Println("Health Check Success")
 				return true
