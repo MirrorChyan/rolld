@@ -148,7 +148,7 @@ func (i *Instance) StartUp(srv string) {
 		if service.Srv == srv {
 			compose := config.NewComposeConfig()
 			compose.Load(i.v.Sub(strings.Join([]string{"services", service.Srv}, ".")))
-			tuple, ok := m[compose.Config.Image]
+			_, ok := m[compose.Config.Image]
 			if !ok {
 				fmt.Println("New Service Up")
 			}
@@ -178,20 +178,23 @@ func (i *Instance) StartUp(srv string) {
 
 			fmt.Println("Change Upstream")
 			if err = i.changeUpstream(service, port); err != nil {
-				log.Fatal(err)
+				_ = cli.ContainerRemove(ctx, create.ID, container.RemoveOptions{
+					Force: true,
+				})
+				log.Fatal("Clear Error Container", err)
 			}
 
-			if ok {
-				fmt.Println("Prune Containers")
-				for _, val := range tuple.Containers[1:] {
-					err = cli.ContainerRemove(ctx, val.ID, container.RemoveOptions{
-						Force: true,
-					})
-					if err != nil {
-						log.Println(err)
-					}
-				}
-			}
+			//if ok {
+			//	fmt.Println("Prune Containers")
+			//	for _, val := range tuple.Containers {
+			//		err = cli.ContainerRemove(ctx, val.ID, container.RemoveOptions{
+			//			Force: true,
+			//		})
+			//		if err != nil {
+			//			log.Println(err)
+			//		}
+			//	}
+			//}
 
 			return
 		}
