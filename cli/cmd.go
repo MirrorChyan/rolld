@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/c-bata/go-prompt"
 	"log"
+	"os"
 	"regexp"
 	"rolld/ctrl"
 	"rolld/internal"
@@ -22,16 +23,28 @@ func main() {
 		return
 	}
 	fmt.Println("hello, developer !")
-	for {
-		input := prompt.Input("> ", completer, prompt.OptionHistory(nil))
+
+	p := prompt.New(
+		executor(instance),
+		completer,
+		prompt.OptionPrefix("> "),
+		prompt.OptionHistory(nil),
+	)
+	p.Run()
+
+}
+
+func executor(instance *ctrl.Instance) func(input string) {
+	return func(input string) {
 		cmds := space.Split(input, -1)
 		if strings.TrimSpace(input) == "exit" {
 			fmt.Println("bye !")
-			return
+			Restore()
+			os.Exit(0)
 		} else if prefix.MatchString(input) {
 			if len(cmds) < 2 {
 				fmt.Println("please input service name")
-				continue
+				return
 			}
 			srv := cmds[1]
 			switch cmds[0] {
