@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/c-bata/go-prompt"
 	"log"
 	"os"
 	"regexp"
 	"rolld/ctrl"
 	"rolld/internal"
 	"strings"
+
+	"github.com/c-bata/go-prompt"
 )
 
 var (
@@ -17,6 +18,9 @@ var (
 )
 
 func main() {
+	defer func() {
+		Restore()
+	}()
 	instance := ctrl.Init()
 	if instance == nil {
 		log.Println("init error")

@@ -5,11 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
-	"github.com/spf13/viper"
 	"log"
 	"net/http"
 	"rolld/config"
@@ -19,6 +14,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
+	"github.com/spf13/viper"
 )
 
 var ctx = context.Background()
@@ -43,7 +44,9 @@ func Init() *Instance {
 
 	instance.v = v
 
-	cli, err := client.NewClientWithOpts(client.WithHost(api))
+	var err error
+	var cli *client.Client
+	cli, err = client.NewClientWithOpts()
 	if err != nil {
 		log.Fatal(err)
 		return nil
@@ -141,6 +144,7 @@ func (i *Instance) StartUp(srv string) {
 	cli := i.c
 	m, err := i.LoadContainerInfo()
 	if err != nil {
+		log.Println(err)
 		return
 	}
 
