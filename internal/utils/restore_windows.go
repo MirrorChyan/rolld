@@ -1,3 +1,3 @@
-package main
+package utils
 
 func Restore() {}

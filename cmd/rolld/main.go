@@ -5,8 +5,9 @@ import (
 	"log"
 	"os"
 	"regexp"
-	"rolld/ctrl"
 	"rolld/internal"
+	"rolld/internal/model"
+	"rolld/internal/utils"
 	"strings"
 
 	"github.com/c-bata/go-prompt"
@@ -19,9 +20,9 @@ var (
 
 func main() {
 	defer func() {
-		Restore()
+		utils.Restore()
 	}()
-	instance := ctrl.Init()
+	instance := internal.Init()
 	if instance == nil {
 		log.Println("init error")
 		return
@@ -38,12 +39,12 @@ func main() {
 
 }
 
-func executor(instance *ctrl.Instance) func(input string) {
+func executor(instance *internal.Instance) func(input string) {
 	return func(input string) {
 		cmds := space.Split(input, -1)
 		if strings.TrimSpace(input) == "exit" {
 			fmt.Println("bye !")
-			Restore()
+			utils.Restore()
 			os.Exit(0)
 		} else if prefix.MatchString(input) {
 			if len(cmds) < 2 {
@@ -75,7 +76,7 @@ func completer(d prompt.Document) []prompt.Suggest {
 		if match[1] == "prune" {
 			s = append(s, prompt.Suggest{Text: "all"})
 		}
-		for _, srv := range internal.C.UpstreamServer {
+		for _, srv := range model.C.UpstreamServer {
 			s = append(s, prompt.Suggest{Text: srv.Srv})
 		}
 

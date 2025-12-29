@@ -1,0 +1,14 @@
+# APISIX Gateway Configuration
+# Copy this file to nodes.yaml and modify according to your environment
+
+apisix:
+  # APISIX Admin API endpoint
+  admin: "http://localhost:9180"
+  # APISIX Admin API key
+  admin-key: "your-admin-api-key"
+  # Upstream server configurations
+  upstream-server:
+    - id: "1"                      # APISIX upstream ID
+      srv: "my-service"            # Service name (must match compose.yaml service name)
+      health-check: "/health"      # Health check endpoint
+      port: "8080"                 # Container internal port

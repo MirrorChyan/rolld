@@ -1,0 +1,18 @@
+# Docker Compose Configuration for rolld
+# Copy this file to compose.yaml and modify according to your services
+
+services:
+  my-service:
+    image: "your-registry/your-image:latest"
+    environment:
+      - ENV=production
+      - LOG_LEVEL=info
+    volumes:
+      - /data/logs:/app/logs
+    networks:
+      - app-network
+    extra_hosts:
+      - "docker.local:host-gateway"
+    entrypoint:
+      - "/app/entrypoint.sh"
+    restart: unless-stopped

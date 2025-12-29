@@ -1,4 +1,4 @@
-package ctrl
+package internal
 
 import (
 	"bytes"
@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"rolld/config"
-	"rolld/internal"
-	"rolld/utils"
+	config2 "rolld/internal/config"
+	"rolld/internal/model"
+	"rolld/internal/utils"
 	"slices"
 	"strconv"
 	"strings"
@@ -40,7 +40,7 @@ type Instance struct {
 
 func Init() *Instance {
 	instance := &Instance{}
-	v := config.LoadComposeConfig()
+	v := config2.LoadComposeConfig()
 
 	instance.v = v
 
@@ -96,7 +96,7 @@ func (i *Instance) LoadContainerInfo() (map[string]*ContainerTuple, error) {
 	return m, nil
 }
 
-func checkHealth(srv internal.Server, port string) bool {
+func checkHealth(srv model.Server, port string) bool {
 	url := fmt.Sprintf("http://localhost:%s%s", port, srv.HealthCheck)
 	fmt.Println("Check Health ...", url)
 	ticker := time.NewTicker(time.Second * 3)
@@ -120,22 +120,23 @@ func checkHealth(srv internal.Server, port string) bool {
 	}
 }
 
-func (i *Instance) changeUpstream(srv internal.Server, port string) error {
+func (i *Instance) changeUpstream(srv model.Server, port string) error {
 	nodes := map[string]any{
 		fmt.Sprintf("docker.local:%v", port): 100,
 	}
 	buf, _ := json.Marshal(nodes)
 
-	admin := fmt.Sprintf("%v/apisix/admin/upstreams/%v/nodes", internal.C.Admin, srv.ID)
+	admin := fmt.Sprintf("%v/apisix/admin/upstreams/%v/nodes", model.C.Admin, srv.ID)
 	request, err := http.NewRequest(http.MethodPatch, admin, bytes.NewReader(buf))
 	if err != nil {
 		return err
 	}
-	request.Header.Add("X-API-KEY", internal.C.AdminKey)
+	request.Header.Add("X-API-KEY", model.C.AdminKey)
 	resp, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	fmt.Printf("Admin Api Response: %v\n", resp.StatusCode)
 	return nil
 }
@@ -148,9 +149,9 @@ func (i *Instance) StartUp(srv string) {
 		return
 	}
 
-	for _, service := range internal.C.UpstreamServer {
+	for _, service := range model.C.UpstreamServer {
 		if service.Srv == srv {
-			compose := config.NewComposeConfig()
+			compose := config2.NewComposeConfig()
 			compose.Load(i.v.Sub(strings.Join([]string{"services", service.Srv}, ".")))
 			_, ok := m[compose.Config.Image]
 			if !ok {
@@ -214,9 +215,9 @@ func (i *Instance) Prune(srv string) {
 		log.Fatal(err)
 		return
 	}
-	for _, service := range internal.C.UpstreamServer {
+	for _, service := range model.C.UpstreamServer {
 		if srv == "all" || service.Srv == srv {
-			compose := config.NewComposeConfig()
+			compose := config2.NewComposeConfig()
 			compose.Load(i.v.Sub(strings.Join([]string{"services", service.Srv}, ".")))
 			tuple, ok := info[compose.Config.Image]
 
@@ -249,9 +250,9 @@ func (i *Instance) Rollback(srv string) {
 		log.Fatal(err)
 		return
 	}
-	for _, service := range internal.C.UpstreamServer {
+	for _, service := range model.C.UpstreamServer {
 		if service.Srv == srv {
-			compose := config.NewComposeConfig()
+			compose := config2.NewComposeConfig()
 			compose.Load(i.v.Sub(strings.Join([]string{"services", service.Srv}, ".")))
 			tuple, ok := info[compose.Config.Image]
 
