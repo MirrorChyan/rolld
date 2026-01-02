@@ -2,10 +2,14 @@ package config
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"strings"
 
+	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
@@ -93,7 +97,16 @@ func (c *ComposeConfig) ApplyPort(export, inner string) {
 
 func (c *ComposeConfig) Pull(cli *client.Client) error {
 	ref := c.Sub.GetString("image")
-	resp, err := cli.ImagePull(ctx, ref, image.PullOptions{})
+	log.Println("Pulling image", ref)
+	authStr, err := GetRegistryAuth(ref)
+	if err != nil {
+		log.Printf("Warning: could not get registry auth: %v, trying without auth\n", err)
+		authStr = ""
+	}
+
+	resp, err := cli.ImagePull(ctx, ref, image.PullOptions{
+		RegistryAuth: authStr,
+	})
 	if err != nil {
 		return err
 	}
@@ -131,4 +144,55 @@ func (c *ComposeConfig) Prune(cli *client.Client) {
 
 func (c *ComposeConfig) RollStart(cli *client.Client) {
 
+}
+
+func GetRegistryAuth(imageRef string) (string, error) {
+	cfg, err := config.Load(config.Dir())
+	if err != nil {
+		return "", fmt.Errorf("failed to load docker config: %w", err)
+	}
+
+	registryHost := extractRegistryHost(imageRef)
+	fmt.Printf("Registry host: %s\n", registryHost)
+
+	authConfig, err := cfg.GetAuthConfig(registryHost)
+	if err != nil {
+		return "", fmt.Errorf("failed to get auth config: %w", err)
+	}
+
+	if authConfig.Username == "" && authConfig.IdentityToken == "" {
+		return "", fmt.Errorf("no credentials found for registry: %s", registryHost)
+	}
+
+	val, err := json.Marshal(authConfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal auth config: %w", err)
+	}
+
+	encodedAuth := base64.URLEncoding.EncodeToString(val)
+	return encodedAuth, nil
+}
+
+func extractRegistryHost(imageRef string) string {
+	if idx := strings.Index(imageRef, "@"); idx != -1 {
+		imageRef = imageRef[:idx]
+	}
+	if idx := strings.Index(imageRef, ":"); idx != -1 {
+		beforeColon := imageRef[:idx]
+		if !strings.Contains(beforeColon, "/") {
+			imageRef = beforeColon
+		}
+	}
+
+	parts := strings.SplitN(imageRef, "/", 2)
+	if len(parts) == 1 {
+		return "https://index.docker.io/v1/"
+	}
+
+	firstPart := parts[0]
+	if strings.Contains(firstPart, ".") || strings.Contains(firstPart, ":") || firstPart == "localhost" {
+		return firstPart
+	}
+
+	return "https://index.docker.io/v1/"
 }
