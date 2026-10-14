@@ -2,17 +2,16 @@ package config
 
 import (
 	"github.com/spf13/viper"
-	"log"
 )
 
-func LoadComposeConfig() *viper.Viper {
+// LoadComposeConfig reads compose.yaml in the current directory.
+func LoadComposeConfig() (*viper.Viper, error) {
 	v := viper.New()
 	v.SetConfigType("yaml")
 	v.SetConfigName("compose")
 	v.AddConfigPath(".")
-	err := v.ReadInConfig()
-	if err != nil {
-		log.Fatal(err)
+	if err := v.ReadInConfig(); err != nil {
+		return nil, err
 	}
-	return v
+	return v, nil
 }

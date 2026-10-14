@@ -47,6 +47,27 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestLoadReplacesServersOnReload(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	write := func(servers string) {
+		t.Helper()
+		nodes := "apisix:\n  admin: \"http://127.0.0.1:9180\"\n  upstream-server:\n" + servers
+		if err := os.WriteFile(filepath.Join(dir, "nodes.yaml"), []byte(nodes), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := Load(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("    - srv: a\n      id: \"1\"\n    - srv: b\n      id: \"2\"\n")
+	write("    - srv: c\n      id: \"3\"\n")
+	if len(C.UpstreamServer) != 1 || C.UpstreamServer[0].Srv != "c" || C.UpstreamServer[0].ID != "3" {
+		t.Fatalf("after reload UpstreamServer = %+v, want only c", C.UpstreamServer)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	chdir(t, t.TempDir())
 	if err := Load(); err == nil {

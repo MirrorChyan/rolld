@@ -7,15 +7,17 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-connections/nat"
+	"github.com/moby/term"
 	"github.com/spf13/viper"
 )
 
@@ -113,37 +115,19 @@ func (c *ComposeConfig) Pull(cli *client.Client) error {
 	defer func(r io.ReadCloser) {
 		_ = r.Close()
 	}(resp)
-	buf := make([]byte, 4096)
 	fmt.Printf("Pulling from %s\n", ref)
-	for {
-		n, err := resp.Read(buf)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-		var m map[string]any
-		_ = json.Unmarshal(buf[:n], &m)
-		r, ok := m["progress"]
-		if !ok {
-			fmt.Printf("Image Pulled\r")
-		} else {
-			fmt.Printf("%v\r", r)
-		}
+	if err := printPullProgress(resp, os.Stdout); err != nil {
+		return fmt.Errorf("pull %s: %w", ref, err)
 	}
-	fmt.Println()
 	return nil
 }
 
-func (c *ComposeConfig) Prune(cli *client.Client) {
-	_, err := cli.ImagesPrune(ctx, filters.NewArgs())
-	if err != nil {
-		return
-	}
-}
-
-func (c *ComposeConfig) RollStart(cli *client.Client) {
-
+// printPullProgress prints an image pull progress stream to out. The daemon reports
+// a failed pull inside the stream rather than as an error of ImagePull, so the
+// returned error is the only signal that the pull did not complete.
+func printPullProgress(stream io.Reader, out io.Writer) error {
+	fd, isTerminal := term.GetFdInfo(out)
+	return jsonmessage.DisplayJSONMessagesStream(stream, out, fd, isTerminal, nil)
 }
 
 func GetRegistryAuth(imageRef string) (string, error) {

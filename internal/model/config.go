@@ -29,5 +29,12 @@ func Load() error {
 	if err := v.ReadInConfig(); err != nil {
 		return fmt.Errorf("please create a config file named \"nodes.yaml\" in the current directory: %w", err)
 	}
-	return v.UnmarshalKey("apisix", &C)
+	// Decode into a fresh value: decoding over C again on reload would keep stale
+	// upstream servers when the list gets shorter.
+	var c GatewayConfig
+	if err := v.UnmarshalKey("apisix", &c); err != nil {
+		return err
+	}
+	C = c
+	return nil
 }

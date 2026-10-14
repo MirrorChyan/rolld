@@ -22,13 +22,9 @@ func main() {
 	defer func() {
 		utils.Restore()
 	}()
-	if err := model.Load(); err != nil {
+	instance, err := internal.Init()
+	if err != nil {
 		log.Fatal(err)
-	}
-	instance := internal.Init()
-	if instance == nil {
-		log.Println("init error")
-		return
 	}
 	fmt.Println("hello, developer !")
 
@@ -54,17 +50,26 @@ func executor(instance *internal.Instance) func(input string) {
 				fmt.Println("please input service name")
 				return
 			}
+			// pick up edits to nodes.yaml / compose.yaml made since the last command
+			if err := instance.Reload(); err != nil {
+				fmt.Println("reload config error:", err)
+				return
+			}
 			srv := cmds[1]
+			var err error
 			switch cmds[0] {
 			case "up":
 				fmt.Println("prepare to up new service", srv)
-				instance.StartUp(cmds[1])
+				err = instance.StartUp(srv)
 			case "rollback":
 				fmt.Println("prepare to rollback old service", srv)
-				instance.Rollback(cmds[1])
+				err = instance.Rollback(srv)
 			case "prune":
 				fmt.Println("prepare to prune old container")
-				instance.Prune(cmds[1])
+				err = instance.Prune(srv)
+			}
+			if err != nil {
+				fmt.Println("error:", err)
 			}
 		} else {
 			fmt.Println("unknown command", input)
