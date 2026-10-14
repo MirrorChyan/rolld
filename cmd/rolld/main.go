@@ -22,6 +22,9 @@ func main() {
 	defer func() {
 		utils.Restore()
 	}()
+	if err := model.Load(); err != nil {
+		log.Fatal(err)
+	}
 	instance := internal.Init()
 	if instance == nil {
 		log.Println("init error")

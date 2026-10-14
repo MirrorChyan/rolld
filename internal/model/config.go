@@ -1,7 +1,7 @@
 package model
 
 import (
-	"log"
+	"fmt"
 
 	"github.com/spf13/viper"
 )
@@ -21,16 +21,13 @@ type GatewayConfig struct {
 	UpstreamServer []Server `mapstructure:"upstream-server"`
 }
 
-func init() {
-	viper.New()
-	viper.SetConfigName("nodes")
-	viper.AddConfigPath(".")
-	err := viper.ReadInConfig()
-	if err != nil {
-		log.Println("Please create a config file named \"nodes.yaml\" in the current directory")
-		log.Fatal(err)
+// Load reads nodes.yaml in the current directory into C.
+func Load() error {
+	v := viper.New()
+	v.SetConfigName("nodes")
+	v.AddConfigPath(".")
+	if err := v.ReadInConfig(); err != nil {
+		return fmt.Errorf("please create a config file named \"nodes.yaml\" in the current directory: %w", err)
 	}
-	if err = viper.UnmarshalKey("apisix", &C); err != nil {
-		log.Fatal(err)
-	}
+	return v.UnmarshalKey("apisix", &C)
 }
