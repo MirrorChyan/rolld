@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	config2 "rolld/internal/config"
 	"rolld/internal/model"
 	"rolld/internal/utils"
@@ -26,12 +27,8 @@ var ctx = context.Background()
 
 const api = "http://127.0.0.1:2375"
 
-type ContainerTuple struct {
-	Created       time.Time
-	ContainerId   string
-	ContainerName string
-	Containers    []types.ContainerJSON
-}
+// nameLayout is the timestamp suffix of container names: <srv>-<nameLayout>
+const nameLayout = "01.02-15.04.05"
 
 type Instance struct {
 	v *viper.Viper
@@ -56,7 +53,16 @@ func Init() *Instance {
 
 }
 
-func (i *Instance) LoadContainerInfo() (map[string]*ContainerTuple, error) {
+// serviceNamePattern matches the names StartUp gives containers of srv.
+func serviceNamePattern(srv string) *regexp.Regexp {
+	return regexp.MustCompile(`^/?` + regexp.QuoteMeta(srv) + `-\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}$`)
+}
+
+// LoadServiceContainers returns the running containers of srv, newest first.
+//
+// Containers are matched by name instead of image: after a moving tag such as
+// :main is pulled again, older containers report the image ID instead of the tag.
+func (i *Instance) LoadServiceContainers(srv string) ([]types.ContainerJSON, error) {
 	filter := filters.NewArgs()
 	filter.Add("status", "running")
 	list, err := i.c.ContainerList(ctx, container.ListOptions{
@@ -66,34 +72,27 @@ func (i *Instance) LoadContainerInfo() (map[string]*ContainerTuple, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := make(map[string]*ContainerTuple)
 
+	pattern := serviceNamePattern(srv)
+	var containers []types.ContainerJSON
 	for _, ctr := range list {
-		inspect, _ := i.c.ContainerInspect(ctx, ctr.ID)
-		ts, _ := time.Parse(time.RFC3339Nano, inspect.Created)
-		c, ok := m[ctr.Image]
-		if !ok {
-			tuple := &ContainerTuple{
-				Created:       ts,
-				ContainerId:   ctr.ID,
-				ContainerName: ctr.Names[0],
-				Containers:    []types.ContainerJSON{inspect},
-			}
-			m[ctr.Image] = tuple
-		} else {
-			c.Containers = append(c.Containers, inspect)
+		if !slices.ContainsFunc(ctr.Names, pattern.MatchString) {
+			continue
 		}
+		inspect, err := i.c.ContainerInspect(ctx, ctr.ID)
+		if err != nil {
+			return nil, err
+		}
+		containers = append(containers, inspect)
 	}
 
-	for _, v := range m {
-		slices.SortFunc(v.Containers, func(a, b types.ContainerJSON) int {
-			ats, _ := time.Parse(time.RFC3339Nano, a.Created)
-			bts, _ := time.Parse(time.RFC3339Nano, b.Created)
-			return bts.Compare(ats)
-		})
-	}
+	slices.SortFunc(containers, func(a, b types.ContainerJSON) int {
+		ats, _ := time.Parse(time.RFC3339Nano, a.Created)
+		bts, _ := time.Parse(time.RFC3339Nano, b.Created)
+		return bts.Compare(ats)
+	})
 
-	return m, nil
+	return containers, nil
 }
 
 func checkHealth(srv model.Server, port string) bool {
@@ -138,23 +137,25 @@ func (i *Instance) changeUpstream(srv model.Server, port string) error {
 	}
 	defer resp.Body.Close()
 	fmt.Printf("Admin Api Response: %v\n", resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("change upstream %v: admin api response %v", srv.ID, resp.StatusCode)
+	}
 	return nil
 }
 
 func (i *Instance) StartUp(srv string) {
 	cli := i.c
-	m, err := i.LoadContainerInfo()
-	if err != nil {
-		log.Println(err)
-		return
-	}
 
 	for _, service := range model.C.UpstreamServer {
 		if service.Srv == srv {
+			existing, err := i.LoadServiceContainers(service.Srv)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 			compose := config2.NewComposeConfig()
 			compose.Load(i.v.Sub(strings.Join([]string{"services", service.Srv}, ".")))
-			_, ok := m[compose.Config.Image]
-			if !ok {
+			if len(existing) == 0 {
 				fmt.Println("New Service Up")
 			}
 
@@ -162,7 +163,7 @@ func (i *Instance) StartUp(srv string) {
 				log.Fatal(err)
 			}
 			port := strconv.Itoa(utils.RandomAvailablePort())
-			name := service.Srv + "-" + time.Now().Format("01.02-15.04.05")
+			name := service.Srv + "-" + time.Now().Format(nameLayout)
 
 			fmt.Println("Get Random Port", port)
 
@@ -210,23 +211,20 @@ func (i *Instance) StartUp(srv string) {
 }
 
 func (i *Instance) Prune(srv string) {
-	info, err := i.LoadContainerInfo()
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
 	for _, service := range model.C.UpstreamServer {
 		if srv == "all" || service.Srv == srv {
-			compose := config2.NewComposeConfig()
-			compose.Load(i.v.Sub(strings.Join([]string{"services", service.Srv}, ".")))
-			tuple, ok := info[compose.Config.Image]
+			containers, err := i.LoadServiceContainers(service.Srv)
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
 
-			if !ok || len(tuple.Containers) < 2 {
+			if len(containers) < 2 {
 				fmt.Println("Srv ", service.Srv, "only has one container, skip prune")
 				continue
 			}
-			for _, ctr := range tuple.Containers[1:] {
-				fmt.Println("Prune Containers")
+			for _, ctr := range containers[1:] {
+				fmt.Println("Prune Container", ctr.Name)
 				err = i.c.ContainerRemove(ctx, ctr.ID, container.RemoveOptions{
 					Force: true,
 				})
@@ -245,22 +243,19 @@ func (i *Instance) Prune(srv string) {
 }
 
 func (i *Instance) Rollback(srv string) {
-	info, err := i.LoadContainerInfo()
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
 	for _, service := range model.C.UpstreamServer {
 		if service.Srv == srv {
-			compose := config2.NewComposeConfig()
-			compose.Load(i.v.Sub(strings.Join([]string{"services", service.Srv}, ".")))
-			tuple, ok := info[compose.Config.Image]
+			containers, err := i.LoadServiceContainers(service.Srv)
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
 
-			if !ok || len(tuple.Containers) < 2 {
+			if len(containers) < 2 {
 				fmt.Println("Srv ", srv, "only has one container, can't rollback")
 				return
 			}
-			bindings := tuple.Containers[1].HostConfig.PortBindings
+			bindings := containers[1].HostConfig.PortBindings
 			if len(bindings) != 1 {
 				fmt.Println("Srv ", srv, "has multi port bindings, can't rollback")
 				return
@@ -278,7 +273,7 @@ func (i *Instance) Rollback(srv string) {
 			if err := i.changeUpstream(service, port); err != nil {
 				log.Fatal(err)
 			}
-			_ = i.c.ContainerRemove(ctx, tuple.Containers[0].ID, container.RemoveOptions{
+			_ = i.c.ContainerRemove(ctx, containers[0].ID, container.RemoveOptions{
 				Force: true,
 			})
 			fmt.Println("Clear Container")
