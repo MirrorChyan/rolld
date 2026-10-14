@@ -79,6 +79,10 @@ func TestHostPort(t *testing.T) {
 	if port, err := hostPort(containerOn("/a", "32283")); err != nil || port != "32283" {
 		t.Errorf("hostPort = %q, %v, want 32283", port, err)
 	}
+	// what earlier rolld versions stored, as seen on a live container
+	if port, err := hostPort(containerOn("/a", "19719/tcp")); err != nil || port != "19719" {
+		t.Errorf("hostPort of 19719/tcp = %q, %v, want 19719", port, err)
+	}
 	if _, err := hostPort(containerOn("/a", "")); err == nil {
 		t.Error("hostPort without bindings should fail")
 	}
@@ -103,6 +107,7 @@ func TestPruneTargets(t *testing.T) {
 		{"upstream on none", []types.ContainerJSON{newest, middle}, []string{"9"}, nil, true},
 		{"upstream empty", []types.ContainerJSON{newest, middle}, []string{}, nil, true},
 		{"unreadable port is kept", []types.ContainerJSON{newest, unknown, oldest}, []string{"3"}, []string{"/s-1"}, false},
+		{"host ports stored with /tcp", []types.ContainerJSON{containerOn("/m-2", "19719/tcp"), containerOn("/m-1", "21599/tcp")}, []string{"19719"}, []string{"/m-1"}, false},
 	}
 	for _, c := range cases {
 		got, err := pruneTargets(c.containers, c.serving)

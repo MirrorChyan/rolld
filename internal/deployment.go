@@ -139,7 +139,9 @@ func hostPort(ctr types.ContainerJSON) (string, error) {
 	}
 	for _, val := range bindings {
 		for _, p := range val {
-			return p.HostPort, nil
+			// containers created before were given "<port>/tcp" as the host port
+			port, _, _ := strings.Cut(p.HostPort, "/")
+			return port, nil
 		}
 	}
 	return "", fmt.Errorf("container %s has no host port", ctr.Name)
@@ -289,7 +291,7 @@ func (i *Instance) StartUp(srv string) error {
 
 	fmt.Println("Get Random Port", port)
 
-	compose.ApplyPort(strings.Join([]string{port, "tcp"}, "/"), service.Port)
+	compose.ApplyPort(port, service.Port)
 	fmt.Println("Container Create")
 	create, err := cli.ContainerCreate(ctx, compose.Config, compose.HostConfig, compose.NetworkingConfig, nil, name)
 	if err != nil {
